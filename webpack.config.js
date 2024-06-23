@@ -20,6 +20,7 @@ module.exports = {
   output: {
     path: path.resolve(__dirname, "dist"),
     filename: "bundle.js",
+    publicPath: "/",
   },
 
   module: {
@@ -66,6 +67,7 @@ module.exports = {
     static: path.join(__dirname, "build"),
     port: 8088,
     open: true,
+    historyApiFallback: true,
   },
 
   plugins: [
