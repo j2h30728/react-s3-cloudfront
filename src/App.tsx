@@ -1,8 +1,12 @@
+import { Outlet } from "react-router-dom";
+
+import { CacheContextProvider } from "./contexts/CacheContext";
+
 const App = () => {
   return (
-    <div>
-      <h1>Hello, React with TypeScript and Webpack!</h1>
-    </div>
+    <CacheContextProvider>
+      <Outlet />
+    </CacheContextProvider>
   );
 };
 
