@@ -1,7 +1,7 @@
+import { useState, useEffect, useRef, useCallback } from "react";
 import { ApiError } from "#/api/customError";
 import { useCacheContext } from "#/contexts/CacheContext";
 import { FetchStatus } from "#/types/common";
-import { useState, useEffect, useRef, useCallback } from "react";
 
 interface InfiniteFetchState<T> {
   data: T[];
@@ -23,32 +23,35 @@ export default function useInfiniteSuspenseFetch<T>(
   const [isFetching, setIsFetching] = useState(false);
   const { setCacheData, getCacheData, isCachedDataValid } = useCacheContext();
 
-  const loadDataFromEndpoint = useCallback(async () => {
-    const offset = currentOffset.current;
-    const cacheKey = `${cacheKeyPrefix}-${offset}`;
-    try {
-      const response = await fetchCallback(offset);
-      setCacheData(cacheKey, response);
-      setState((prev) => ({ ...prev, data: [...prev.data, response], cacheKey, status: "fulfilled" }));
-      currentOffset.current += 1;
-    } catch (error) {
-      if (error instanceof Error) {
-        setState((prev) => ({ ...prev, status: "rejected", error: new ApiError(error.message) }));
-      } else {
-        setState((prev) => ({ ...prev, status: "rejected", error: new Error("Unknown error occurred") }));
+  const loadDataFromEndpoint = useCallback(
+    async (offset: number) => {
+      const cacheKey = `${cacheKeyPrefix}-${offset}`;
+      try {
+        const response = await fetchCallback(offset);
+        setState((prev) => ({ ...prev, data: [...prev.data, response], status: "fulfilled" }));
+        currentOffset.current = offset + 1;
+        setCacheData(cacheKey, response);
+      } catch (error) {
+        setState({
+          data: [],
+          status: "rejected",
+          error: error instanceof Error ? new ApiError(error.message) : new Error("Unknown error occurred"),
+        });
+      } finally {
+        setIsFetching(false);
       }
-    } finally {
-      setIsFetching(false);
-    }
-  }, [cacheKeyPrefix, fetchCallback, setCacheData]);
+    },
+    [cacheKeyPrefix, fetchCallback, setCacheData]
+  );
 
   const loadMoreData = useCallback(async () => {
-    const page = currentOffset.current;
-    const cacheKey = `${cacheKeyPrefix}-${page}`;
-    setIsFetching(true);
-    if (state.status === "pending") {
+    if (state.status === "pending" || isFetching) {
       return;
     }
+
+    setIsFetching(true);
+    const offset = currentOffset.current;
+    const cacheKey = `${cacheKeyPrefix}-${offset}`;
 
     if (isCachedDataValid(cacheKey)) {
       setState((prev) => ({
@@ -56,20 +59,22 @@ export default function useInfiniteSuspenseFetch<T>(
         data: [...prev.data, getCacheData(cacheKey)],
         status: "fulfilled",
       }));
-      currentOffset.current += 1;
+      currentOffset.current = offset + 1;
+      setIsFetching(false);
       return;
     }
-    currentPromise.current = loadDataFromEndpoint();
-  }, [cacheKeyPrefix, getCacheData, isCachedDataValid, loadDataFromEndpoint, state.status]);
+
+    currentPromise.current = loadDataFromEndpoint(offset);
+  }, [cacheKeyPrefix, getCacheData, isCachedDataValid, isFetching, loadDataFromEndpoint, state.status]);
 
   useEffect(() => {
     if (state.status === "initial") {
       const cacheKey = `${cacheKeyPrefix}-0`;
       if (isCachedDataValid(cacheKey)) {
-        setState((prev) => ({ ...prev, data: getCacheData(cacheKey), cacheKey, status: "fulfilled" }));
+        setState({ data: getCacheData(cacheKey), status: "fulfilled", error: null });
       } else {
         setState((prev) => ({ ...prev, status: "pending" }));
-        currentPromise.current = loadDataFromEndpoint();
+        currentPromise.current = loadDataFromEndpoint(0);
       }
     }
   }, [cacheKeyPrefix, getCacheData, isCachedDataValid, loadDataFromEndpoint, state.status]);
